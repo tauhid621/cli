@@ -6,5 +6,6 @@ import (
 )
 
 func isEpipeError(err error) bool {
-	return errors.Is(err, syscall.ERROR_NO_DATA)
+	// 232 is Windows error code ERROR_NO_DATA, "The pipe is being closed".
+	return errors.Is(err, syscall.Errno(232))
 }
