@@ -15,6 +15,7 @@ import (
 	codespaceCmd "github.com/cli/cli/v2/pkg/cmd/codespace"
 	completionCmd "github.com/cli/cli/v2/pkg/cmd/completion"
 	configCmd "github.com/cli/cli/v2/pkg/cmd/config"
+	envCmd "github.com/cli/cli/v2/pkg/cmd/env"
 	extensionCmd "github.com/cli/cli/v2/pkg/cmd/extension"
 	"github.com/cli/cli/v2/pkg/cmd/factory"
 	gistCmd "github.com/cli/cli/v2/pkg/cmd/gist"
@@ -83,6 +84,7 @@ func NewCmdRoot(f *cmdutil.Factory, version, buildDate string) *cobra.Command {
 	cmd.AddCommand(completionCmd.NewCmdCompletion(f.IOStreams))
 	cmd.AddCommand(extensionCmd.NewCmdExtension(f))
 	cmd.AddCommand(secretCmd.NewCmdSecret(f))
+	cmd.AddCommand(envCmd.NewCmdEnv(f))
 	cmd.AddCommand(sshKeyCmd.NewCmdSSHKey(f))
 	cmd.AddCommand(newCodespaceCmd(f))
 
