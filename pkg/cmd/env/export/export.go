@@ -14,7 +14,6 @@ import (
 	"github.com/cli/cli/v2/internal/ghrepo"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
-	"github.com/cli/cli/v2/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -29,8 +28,9 @@ type ExportOptions struct {
 }
 
 type GhEnvironment struct {
-	Name    string
-	Secrets []*Secret
+	Name      string
+	Secrets   []*Secret
+	Variables map[string]string
 }
 
 func NewCmdExport(f *cmdutil.Factory, runF func(*ExportOptions) error) *cobra.Command {
@@ -79,43 +79,20 @@ func exportRun(opts *ExportOptions) error {
 	var secrets []*Secret
 
 	secrets, err = GetEnvSecrets(client, baseRepo, envName)
-
 	if err != nil {
 		return fmt.Errorf("failed to get secrets: %w", err)
 	}
 
-	if opts.Format == "" {
-		if err := opts.IO.StartPager(); err == nil {
-			defer opts.IO.StopPager()
-		} else {
-			fmt.Fprintf(opts.IO.ErrOut, "failed to start pager: %v\n", err)
-		}
+	ghenv, err := GetEnv(client, baseRepo, envName)
+	if err != nil {
+		return fmt.Errorf("failed to get env: %w", err)
+	}
 
-		tp := utils.NewTablePrinter(opts.IO)
-		for _, secret := range secrets {
-			tp.AddField(secret.Name, nil, nil)
-			tp.AddField(string(secret.Value), nil, nil)
-			updatedAt := secret.UpdatedAt.Format("2006-01-02")
-			if opts.IO.IsStdoutTTY() {
-				updatedAt = fmt.Sprintf("Updated %s", updatedAt)
-			}
-			tp.AddField(updatedAt, nil, nil)
-
-			tp.EndRow()
-		}
-
-		err = tp.Render()
-		if err != nil {
-			return err
-		}
-	} else if opts.Format == "json" {
-		env := &GhEnvironment{Name: envName, Secrets: secrets}
+	if opts.Format == "" || opts.Format == "json" {
+		env := &GhEnvironment{Name: envName, Secrets: secrets, Variables: ghenv.Variables}
 
 		jsonContent, _ := json.MarshalIndent(env, "", " ")
 		fmt.Println(string(jsonContent))
-		// _ = ioutil.WriteFile(opts.JsonFileName, fileContent, 0644)
-
-		// fmt.Printf("Environment exported to %s\n", opts.JsonFileName)
 	} else {
 		fmt.Println("Format not supported")
 	}
@@ -129,9 +106,49 @@ type Secret struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Env struct {
+	Id        int
+	Name      string
+	Variables map[string]string
+	Url       string
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 func GetEnvSecrets(client httpClient, repo ghrepo.Interface, envName string) ([]*Secret, error) {
 	path := fmt.Sprintf("repos/%s/environments/%s/secrets", ghrepo.FullName(repo), envName)
 	return getSecrets(client, repo.RepoHost(), path)
+}
+
+func GetEnv(client httpClient, repo ghrepo.Interface, envName string) (*Env, error) {
+
+	path := fmt.Sprintf("repos/%s/environments/%s", ghrepo.FullName(repo), envName)
+	url := fmt.Sprintf("%s%s", ghinstance.RESTPrefix(repo.RepoHost()), path)
+	//
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode > 299 {
+		return nil, api.HandleHTTPError(resp)
+	}
+
+	dec := json.NewDecoder(resp.Body)
+
+	var envir Env
+
+	if err := dec.Decode(&envir); err != nil {
+		return nil, err
+	}
+	return &envir, nil
 }
 
 type secretsPayload struct {
