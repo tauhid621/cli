@@ -272,6 +272,39 @@ type setResult struct {
 	err       error
 }
 
+func SetEnvSecret(host string, client *api.Client, baseRepo ghrepo.Interface, envName string, secretKey string, secret []byte) error {
+	pk, err := getEnvPubKey(client, baseRepo, envName)
+	if err != nil {
+		return fmt.Errorf("failed to fetch public key: %w", err)
+	}
+
+	decodedPubKey, err := base64.StdEncoding.DecodeString(pk.Key)
+	if err != nil {
+		return fmt.Errorf("failed to decode public key: %w", err)
+
+	}
+	var peersPubKey [32]byte
+	copy(peersPubKey[:], decodedPubKey[0:32])
+
+	var rand io.Reader
+	// if opts.RandomOverride != nil {
+	// 	rand = opts.RandomOverride()
+	// }
+	eBody, err := box.SealAnonymous(nil, secret[:], &peersPubKey, rand)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt body: %w", err)
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(eBody)
+
+	err = putEnvSecret(client, pk, baseRepo, envName, secretKey, encoded)
+	if err != nil {
+		return fmt.Errorf("failed to set secret: %w", err)
+	}
+
+	return nil
+}
+
 func setSecret(opts *SetOptions, pk *PubKey, host string, client *api.Client, baseRepo ghrepo.Interface, secretKey string, secret []byte, repositoryIDs []int64) (res setResult) {
 	orgName := opts.OrgName
 	envName := opts.EnvName

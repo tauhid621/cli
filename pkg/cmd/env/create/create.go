@@ -14,6 +14,7 @@ import (
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/ghinstance"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	secretSet "github.com/cli/cli/v2/pkg/cmd/secret/set"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/spf13/cobra"
@@ -27,6 +28,8 @@ type CreateOptions struct {
 
 	EnvName   string
 	Variables string
+	Secrets   string
+	Who       string
 }
 
 // type GhEnvironment struct {
@@ -62,6 +65,8 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
 	}
 
 	cmd.Flags().StringVarP(&opts.Variables, "variables", "v", "", "Variables for the env")
+	cmd.Flags().StringVarP(&opts.Secrets, "secret", "s", "", "Variables for the env")
+	cmd.Flags().StringVarP(&opts.Who, "who", "w", "", "who can access the env")
 
 	return cmd
 }
@@ -77,25 +82,50 @@ func createRun(opts *CreateOptions) error {
 	var baseRepo ghrepo.Interface
 	baseRepo, err = opts.BaseRepo()
 
-	err = CreateOrUpdateEnv(client, baseRepo, envName, opts.Variables)
+	err = CreateOrUpdateEnv(client, baseRepo, envName, opts)
 	if err != nil {
 		return fmt.Errorf("error while creating/updating env: %w", err)
+	}
+
+	sclient := api.NewClientFromHTTP(client)
+
+	if opts.Secrets != "" {
+		secrets_map, err := getStringMap(opts.Secrets)
+		if err != nil {
+			return err
+		}
+
+		for key, value := range secrets_map {
+			// fmt.Println("Key:", key, "=>", "Element:", value)
+
+			secretSet.SetEnvSecret(baseRepo.RepoHost(), sclient, baseRepo, envName, key, []byte(value))
+		}
+
 	}
 
 	return nil
 }
 
-func CreateOrUpdateEnv(client httpClient, repo ghrepo.Interface, envName string, variables string) error {
+func CreateOrUpdateEnv(client httpClient, repo ghrepo.Interface, envName string, createOptions *CreateOptions) error {
 	path := fmt.Sprintf("repos/%s/environments/%s", ghrepo.FullName(repo), envName)
 
 	var reqBody []byte
-	if variables != "" {
-		variables_map, err := getVariables(variables)
+	var err error
+	if createOptions.Variables != "" {
+		variables_map, err := getStringMap(createOptions.Variables)
 		if err != nil {
 			return err
 		}
 
 		reqBody, err = json.Marshal(map[string]interface{}{"variables": variables_map})
+		if err != nil {
+			return err
+		}
+	}
+
+	if createOptions.Who != "" {
+		// doing [1:] as expecting @ before name
+		reqBody, err = json.Marshal(map[string]interface{}{"access": createOptions.Who[1:]})
 		if err != nil {
 			return err
 		}
@@ -124,7 +154,7 @@ func CreateOrUpdateEnv(client httpClient, repo ghrepo.Interface, envName string,
 	return nil
 }
 
-func getVariables(variables string) (map[string]string, error) {
+func getStringMap(variables string) (map[string]string, error) {
 	vars := strings.Split(variables, ",")
 	varMap := make(map[string]string)
 

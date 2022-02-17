@@ -80,7 +80,7 @@ func exportRun(opts *ExportOptions) error {
 
 	secrets, err = GetEnvSecrets(client, baseRepo, envName)
 	if err != nil {
-		return fmt.Errorf("failed to get secrets: %w", err)
+		fmt.Println("failed to get secrets: %w", err)
 	}
 
 	ghenv, err := GetEnv(client, baseRepo, envName)
