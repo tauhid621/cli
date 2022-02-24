@@ -71,7 +71,11 @@ func runRun(opts *RunOptions) error {
 
 	var secrets []*cmdExport.Secret
 	secrets, err = cmdExport.GetEnvSecrets(client, baseRepo, envName)
+	if err != nil {
+		return fmt.Errorf("failed to get secrets: %w", err)
+	}
 
+	env, err := cmdExport.GetEnv(client, baseRepo, envName)
 	if err != nil {
 		return fmt.Errorf("failed to get secrets: %w", err)
 	}
@@ -80,6 +84,10 @@ func runRun(opts *RunOptions) error {
 
 	for _, secret := range secrets {
 		envVar = append(envVar, fmt.Sprintf("%s=%s", secret.Name, secret.Value))
+	}
+
+	for _, variable := range env.Variables {
+		envVar = append(envVar, fmt.Sprintf("%s=%s", variable.Name, variable.Value))
 	}
 
 	binary, lookErr := exec.LookPath(opts.Command[0])

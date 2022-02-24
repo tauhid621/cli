@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/MakeNowJust/heredoc"
@@ -28,9 +29,15 @@ type ExportOptions struct {
 }
 
 type GhEnvironment struct {
-	Name      string
-	Secrets   []*Secret
-	Variables map[string]string
+	Id   int
+	Name string
+	// Url        string
+	// UpdatedAt  time.Time `json:"updated_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	Secrets       []*Secret
+	Variables     []Variable
+	ReadAccess    []string
+	SecretsAccess []string
 }
 
 func NewCmdExport(f *cmdutil.Factory, runF func(*ExportOptions) error) *cobra.Command {
@@ -56,7 +63,7 @@ func NewCmdExport(f *cmdutil.Factory, runF func(*ExportOptions) error) *cobra.Co
 				return runF(opts)
 			}
 
-			return exportRun(opts)
+			return ExportRun(opts)
 		},
 	}
 
@@ -65,7 +72,7 @@ func NewCmdExport(f *cmdutil.Factory, runF func(*ExportOptions) error) *cobra.Co
 	return cmd
 }
 
-func exportRun(opts *ExportOptions) error {
+func ExportRun(opts *ExportOptions) error {
 	client, err := opts.HttpClient()
 	if err != nil {
 		return fmt.Errorf("could not create http client: %w", err)
@@ -83,21 +90,56 @@ func exportRun(opts *ExportOptions) error {
 		fmt.Println("failed to get secrets: %w", err)
 	}
 
+	if secrets == nil {
+		secrets = []*Secret{}
+	}
+
 	ghenv, err := GetEnv(client, baseRepo, envName)
 	if err != nil {
 		return fmt.Errorf("failed to get env: %w", err)
 	}
 
-	if opts.Format == "" || opts.Format == "json" {
-		env := &GhEnvironment{Name: envName, Secrets: secrets, Variables: ghenv.Variables}
+	if ghenv.Variables == nil {
+		ghenv.Variables = []Variable{}
+	}
 
+	env := &GhEnvironment{
+		Id:        ghenv.Id,
+		Name:      envName,
+		CreatedAt: ghenv.CreatedAt,
+		//  UpdatedAt: ghenv.UpdatedAt,
+		Secrets:       secrets,
+		Variables:     ghenv.Variables,
+		ReadAccess:    ghenv.ReadAccess,
+		SecretsAccess: ghenv.SecretsAccess,
+	}
+
+	if opts.Format == "" || opts.Format == "json" {
 		jsonContent, _ := json.MarshalIndent(env, "", " ")
 		fmt.Println(string(jsonContent))
+	} else if opts.Format == "env" {
+		exportEnv(env)
+
 	} else {
 		fmt.Println("Format not supported")
 	}
 
 	return nil
+}
+
+func exportEnv(env *GhEnvironment) {
+	fmt.Println(fmt.Sprintf("NAME=%s", env.Name))
+
+	for _, secret := range env.Secrets {
+		fmt.Println(fmt.Sprintf("SECRET_%s=%s", secret.Name, secret.Value))
+	}
+
+	// for varName, varValue := range env.Variables {
+	// 	fmt.Println(fmt.Sprintf("VARIABLE_%s=%s", varName, varValue))
+	// }
+
+	fmt.Println(fmt.Sprintf("READ_ACCESS=@%s", strings.Join(env.ReadAccess, ", @")))
+
 }
 
 type Secret struct {
@@ -106,12 +148,22 @@ type Secret struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Variable struct {
+	Name    string
+	Value   string
+	Created time.Time
+	Updated time.Time
+}
+
 type Env struct {
-	Id        int
-	Name      string
-	Variables map[string]string
-	Url       string
-	UpdatedAt time.Time `json:"updated_at"`
+	Id            int
+	Name          string
+	Variables     []Variable
+	Url           string
+	UpdatedAt     time.Time `json:"updated_at"`
+	CreatedAt     time.Time `json:"created_at"`
+	ReadAccess    []string  `json:"read_access"`
+	SecretsAccess []string  `json:"secrets_read_access"`
 }
 
 func GetEnvSecrets(client httpClient, repo ghrepo.Interface, envName string) ([]*Secret, error) {

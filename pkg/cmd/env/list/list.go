@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/api"
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/ghinstance"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	cmdExport "github.com/cli/cli/v2/pkg/cmd/env/export"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/spf13/cobra"
@@ -74,20 +74,27 @@ func listRun(opts *ListOptions) error {
 	return nil
 }
 
-type Env struct {
-	Id        int
-	Name      string
-	Variables map[string]string
-	Url       string
-	UpdatedAt time.Time `json:"updated_at"`
-}
+// type Variable struct {
+// 	Name    string
+// 	Value   string
+// 	Created time.Time
+// 	Updated time.Time
+// }
+
+// type Env struct {
+// 	Id        int
+// 	Name      string
+// 	Variables map[string]string
+// 	Url       string
+// 	UpdatedAt time.Time `json:"updated_at"`
+// }
 
 type envPayload struct {
 	TotalCount   uint16 `json:"total_count"`
-	Environments []Env
+	Environments []cmdExport.Env
 }
 
-func GetEnvs(client httpClient, repo ghrepo.Interface) ([]Env, error) {
+func GetEnvs(client httpClient, repo ghrepo.Interface) ([]cmdExport.Env, error) {
 
 	path := fmt.Sprintf("repos/%s/environments", ghrepo.FullName(repo))
 	url := fmt.Sprintf("%s%s", ghinstance.RESTPrefix(repo.RepoHost()), path)

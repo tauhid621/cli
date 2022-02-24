@@ -14,7 +14,9 @@ import (
 	"github.com/cli/cli/v2/internal/config"
 	"github.com/cli/cli/v2/internal/ghinstance"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	cmdExport "github.com/cli/cli/v2/pkg/cmd/env/export"
 	secretSet "github.com/cli/cli/v2/pkg/cmd/secret/set"
+
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/spf13/cobra"
@@ -65,7 +67,7 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
 	}
 
 	cmd.Flags().StringVarP(&opts.Variables, "variables", "v", "", "Variables for the env")
-	cmd.Flags().StringVarP(&opts.Secrets, "secret", "s", "", "Variables for the env")
+	cmd.Flags().StringVarP(&opts.Secrets, "secrets", "s", "", "Variables for the env")
 	cmd.Flags().StringVarP(&opts.Who, "who", "w", "", "who can access the env")
 
 	return cmd
@@ -103,6 +105,17 @@ func createRun(opts *CreateOptions) error {
 
 	}
 
+	// export the env
+	exportOpts := &cmdExport.ExportOptions{
+		IO:         opts.IO,
+		Config:     opts.Config,
+		HttpClient: opts.HttpClient,
+		BaseRepo:   opts.BaseRepo,
+		EnvName:    opts.EnvName,
+	}
+
+	cmdExport.ExportRun(exportOpts)
+
 	return nil
 }
 
@@ -125,7 +138,19 @@ func CreateOrUpdateEnv(client httpClient, repo ghrepo.Interface, envName string,
 
 	if createOptions.Who != "" {
 		// doing [1:] as expecting @ before name
-		reqBody, err = json.Marshal(map[string]interface{}{"access": createOptions.Who[1:]})
+
+		split := strings.Split(createOptions.Who, "@")
+		access := split[0]
+		user := split[1]
+
+		if access == "read" {
+			reqBody, err = json.Marshal(map[string]interface{}{"access": user})
+		} else if access == "read_secrets" {
+			reqBody, err = json.Marshal(map[string]interface{}{"secretsaccess": user})
+		} else {
+			fmt.Println("invalid access for user")
+		}
+
 		if err != nil {
 			return err
 		}
